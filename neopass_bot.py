@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Neopass Image Bot v2.0
+Neopass Image Bot v2.1
 Затемняет изображения и добавляет логотип Neopass с настройками
 """
 
@@ -8,7 +8,7 @@ import os
 import logging
 from io import BytesIO
 from PIL import Image
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 # Настройка логирования
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # Токен бота из environment variable
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8578752100:AAEmpvdVrkl-n8qgocT1uYjSTWc8y49J3GU")
 
-# Путь к логотипу (PNG)
+# Путь к логотипу (PNG с прозрачностью)
 LOGO_PATH = "neopass_logo.png"
 
 # Настройки по умолчанию
@@ -98,11 +98,21 @@ def process_image_with_settings(image_bytes, darkness, position):
     return output
 
 
-def get_settings_keyboard():
-    """Клавиатура с настройками"""
+def get_main_menu_keyboard():
+    """Главное меню настроек"""
     keyboard = [
-        [InlineKeyboardButton("⚫ Выбрать процент затемнения", callback_data="choose_darkness")],
-        [InlineKeyboardButton("📍 Расположение лого", callback_data="choose_position")]
+        [InlineKeyboardButton("🖼️ Лого для размещения", callback_data="menu_logo")],
+        [InlineKeyboardButton("⚫ Процент затемнения", callback_data="choose_darkness")],
+        [InlineKeyboardButton("📍 Расположение вотермарки", callback_data="choose_position")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_settings_keyboard():
+    """Клавиатура с настройками (после обработки фото)"""
+    keyboard = [
+        [InlineKeyboardButton("⚫ Процент затемнения", callback_data="choose_darkness")],
+        [InlineKeyboardButton("📍 Расположение вотермарки", callback_data="choose_position")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -120,7 +130,7 @@ def get_darkness_keyboard():
             InlineKeyboardButton("70%", callback_data="darkness_70"),
             InlineKeyboardButton("80%", callback_data="darkness_80")
         ],
-        [InlineKeyboardButton("« Назад", callback_data="back_to_settings")]
+        [InlineKeyboardButton("« Назад", callback_data="back_to_main")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -136,19 +146,31 @@ def get_position_keyboard():
             InlineKeyboardButton("↙️ Снизу слева", callback_data="position_bottom-left"),
             InlineKeyboardButton("↘️ Снизу справа", callback_data="position_bottom-right")
         ],
-        [InlineKeyboardButton("« Назад", callback_data="back_to_settings")]
+        [InlineKeyboardButton("« Назад", callback_data="back_to_main")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
-    await update.message.reply_text(
-        "👋 Привет! Я Neopass Image Bot v2.0.\n\n"
-        "Отправь мне картинку, и я:\n"
-        "• Затемню её (настраиваемый %)\n"
+    user_id = update.effective_user.id
+    settings = get_user_settings(user_id)
+    
+    text = (
+        "👋 <b>Добро пожаловать в Neopass Image Bot!</b>\n\n"
+        "Отправь мне любую картинку, и я:\n"
+        "• Затемню её (настраиваемый процент)\n"
         "• Добавлю логотип Neopass (настраиваемая позиция)\n\n"
-        "После обработки ты сможешь изменить настройки и пересоздать фото!"
+        f"<b>Текущие настройки:</b>\n"
+        f"Затемнение: {settings['darkness']}%\n"
+        f"Позиция: {settings['position']}\n\n"
+        "Используй кнопки ниже для настройки 👇"
+    )
+    
+    await update.message.reply_text(
+        text,
+        parse_mode='HTML',
+        reply_markup=get_main_menu_keyboard()
     )
 
 
@@ -185,7 +207,7 @@ async def process_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption = (
             f"✅ Готово!\n"
             f"Затемнение: {settings['darkness']}%\n"
-            f"Позиция лого: {settings['position']}"
+            f"Позиция: {settings['position']}"
         )
         
         await update.message.reply_photo(
@@ -211,30 +233,42 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     data = query.data
     
+    # Главное меню
+    if data == "back_to_main":
+        text = (
+            f"<b>Текущие настройки:</b>\n"
+            f"Затемнение: {settings['darkness']}%\n"
+            f"Позиция: {settings['position']}\n\n"
+            "Выбери опцию:"
+        )
+        await query.edit_message_text(
+            text=text,
+            parse_mode='HTML',
+            reply_markup=get_main_menu_keyboard()
+        )
+    
+    # Меню лого
+    elif data == "menu_logo":
+        await query.edit_message_text(
+            text="🖼️ <b>Логотип Neopass</b>\n\nТекущий логотип: круглый PNG с прозрачным фоном.\n\nДля изменения логотипа свяжитесь с разработчиком.",
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Назад", callback_data="back_to_main")]])
+        )
+    
     # Меню выбора затемнения
-    if data == "choose_darkness":
-        await query.edit_message_caption(
-            caption=f"Выбери процент затемнения:\nТекущий: {settings['darkness']}%",
+    elif data == "choose_darkness":
+        await query.edit_message_text(
+            text=f"⚫ Выбери процент затемнения:\n\n<b>Текущий:</b> {settings['darkness']}%",
+            parse_mode='HTML',
             reply_markup=get_darkness_keyboard()
         )
     
     # Меню выбора позиции
     elif data == "choose_position":
-        await query.edit_message_caption(
-            caption=f"Выбери расположение логотипа:\nТекущее: {settings['position']}",
+        await query.edit_message_text(
+            text=f"📍 Выбери расположение логотипа:\n\n<b>Текущее:</b> {settings['position']}",
+            parse_mode='HTML',
             reply_markup=get_position_keyboard()
-        )
-    
-    # Назад к настройкам
-    elif data == "back_to_settings":
-        caption = (
-            f"✅ Текущие настройки:\n"
-            f"Затемнение: {settings['darkness']}%\n"
-            f"Позиция лого: {settings['position']}"
-        )
-        await query.edit_message_caption(
-            caption=caption,
-            reply_markup=get_settings_keyboard()
         )
     
     # Выбор затемнения
@@ -242,7 +276,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         darkness = int(data.split("_")[1])
         settings['darkness'] = darkness
         
-        # Пересоздаём изображение
+        # Если есть последнее изображение - пересоздаём
         if settings['last_image']:
             try:
                 output = process_image_with_settings(
@@ -253,13 +287,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 caption = (
                     f"✅ Затемнение изменено на {darkness}%\n"
-                    f"Позиция лого: {settings['position']}"
+                    f"Позиция: {settings['position']}"
                 )
                 
-                # Удаляем старое фото
+                # Удаляем старое сообщение
                 await query.message.delete()
                 
-                # Отправляем новое
+                # Отправляем новое фото
                 await context.bot.send_photo(
                     chat_id=query.message.chat_id,
                     photo=output,
@@ -268,13 +302,27 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             except Exception as e:
                 await query.message.reply_text(f"❌ Ошибка: {str(e)}")
+        else:
+            # Просто обновляем настройки
+            text = (
+                f"✅ Затемнение изменено на {darkness}%\n\n"
+                f"<b>Текущие настройки:</b>\n"
+                f"Затемнение: {darkness}%\n"
+                f"Позиция: {settings['position']}\n\n"
+                "Отправь фото для обработки!"
+            )
+            await query.edit_message_text(
+                text=text,
+                parse_mode='HTML',
+                reply_markup=get_main_menu_keyboard()
+            )
     
     # Выбор позиции
     elif data.startswith("position_"):
         position = data.split("_", 1)[1]
         settings['position'] = position
         
-        # Пересоздаём изображение
+        # Если есть последнее изображение - пересоздаём
         if settings['last_image']:
             try:
                 output = process_image_with_settings(
@@ -284,15 +332,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 
                 caption = (
-                    f"✅ Позиция логотипа изменена\n"
+                    f"✅ Позиция изменена\n"
                     f"Затемнение: {settings['darkness']}%\n"
                     f"Позиция: {position}"
                 )
                 
-                # Удаляем старое фото
+                # Удаляем старое сообщение
                 await query.message.delete()
                 
-                # Отправляем новое
+                # Отправляем новое фото
                 await context.bot.send_photo(
                     chat_id=query.message.chat_id,
                     photo=output,
@@ -301,11 +349,34 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             except Exception as e:
                 await query.message.reply_text(f"❌ Ошибка: {str(e)}")
+        else:
+            # Просто обновляем настройки
+            text = (
+                f"✅ Позиция изменена на {position}\n\n"
+                f"<b>Текущие настройки:</b>\n"
+                f"Затемнение: {settings['darkness']}%\n"
+                f"Позиция: {position}\n\n"
+                "Отправь фото для обработки!"
+            )
+            await query.edit_message_text(
+                text=text,
+                parse_mode='HTML',
+                reply_markup=get_main_menu_keyboard()
+            )
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик ошибок"""
     logger.error(f"Update {update} caused error {context.error}")
+
+
+async def post_init(application: Application):
+    """Установка команд бота после инициализации"""
+    commands = [
+        BotCommand("start", "Главное меню и настройки")
+    ]
+    await application.bot.set_my_commands(commands)
+    logger.info("✅ Команды бота установлены")
 
 
 def main():
@@ -316,10 +387,10 @@ def main():
         logger.error(f"Положи файл {LOGO_PATH} в ту же папку, где находится бот.")
         return
     
-    logger.info("🚀 Запуск Neopass Image Bot v2.0...")
+    logger.info("🚀 Запуск Neopass Image Bot v2.1...")
     
     # Создаём приложение
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     
     # Регистрируем обработчики
     app.add_handler(CommandHandler("start", start))
