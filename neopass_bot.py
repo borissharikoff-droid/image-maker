@@ -233,6 +233,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     data = query.data
     
+    # Определяем тип сообщения (текст или фото)
+    is_photo = bool(query.message.photo)
+    
     # Главное меню
     if data == "back_to_main":
         text = (
@@ -241,35 +244,66 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Позиция: {settings['position']}\n\n"
             "Выбери опцию:"
         )
-        await query.edit_message_text(
-            text=text,
-            parse_mode='HTML',
-            reply_markup=get_main_menu_keyboard()
-        )
+        if is_photo:
+            await query.edit_message_caption(
+                caption=text,
+                parse_mode='HTML',
+                reply_markup=get_main_menu_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                text=text,
+                parse_mode='HTML',
+                reply_markup=get_main_menu_keyboard()
+            )
     
     # Меню лого
     elif data == "menu_logo":
-        await query.edit_message_text(
-            text="🖼️ <b>Логотип Dox</b>\n\nТекущий логотип: круглый PNG с прозрачным фоном.\n\nДля изменения логотипа свяжитесь с разработчиком.",
-            parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Назад", callback_data="back_to_main")]])
-        )
+        text = "🖼️ <b>Логотип Dox</b>\n\nТекущий логотип: круглый PNG с прозрачным фоном.\n\nДля изменения логотипа свяжитесь с разработчиком."
+        if is_photo:
+            await query.edit_message_caption(
+                caption=text,
+                parse_mode='HTML',
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Назад", callback_data="back_to_main")]])
+            )
+        else:
+            await query.edit_message_text(
+                text=text,
+                parse_mode='HTML',
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Назад", callback_data="back_to_main")]])
+            )
     
     # Меню выбора затемнения
     elif data == "choose_darkness":
-        await query.edit_message_text(
-            text=f"⚫ Выбери процент затемнения:\n\n<b>Текущий:</b> {settings['darkness']}%",
-            parse_mode='HTML',
-            reply_markup=get_darkness_keyboard()
-        )
+        text = f"⚫ Выбери процент затемнения:\n\n<b>Текущий:</b> {settings['darkness']}%"
+        if is_photo:
+            await query.edit_message_caption(
+                caption=text,
+                parse_mode='HTML',
+                reply_markup=get_darkness_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                text=text,
+                parse_mode='HTML',
+                reply_markup=get_darkness_keyboard()
+            )
     
     # Меню выбора позиции
     elif data == "choose_position":
-        await query.edit_message_text(
-            text=f"📍 Выбери расположение логотипа:\n\n<b>Текущее:</b> {settings['position']}",
-            parse_mode='HTML',
-            reply_markup=get_position_keyboard()
-        )
+        text = f"📍 Выбери расположение логотипа:\n\n<b>Текущее:</b> {settings['position']}"
+        if is_photo:
+            await query.edit_message_caption(
+                caption=text,
+                parse_mode='HTML',
+                reply_markup=get_position_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                text=text,
+                parse_mode='HTML',
+                reply_markup=get_position_keyboard()
+            )
     
     # Выбор затемнения
     elif data.startswith("darkness_"):
