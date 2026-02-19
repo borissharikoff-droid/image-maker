@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Neopass Image Bot v2.1
-Затемняет изображения и добавляет логотип Neopass с настройками
+Dox Image Bot v2.1
+Затемняет изображения и добавляет логотип Dox с настройками
 """
 
 import os
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8578752100:AAEmpvdVrkl-n8qgocT1uYjSTWc8y49J3GU")
 
 # Путь к логотипу (PNG с прозрачностью)
-LOGO_PATH = "neopass_logo.png"
+LOGO_PATH = "dox_logo.png"
 
 # Настройки по умолчанию
 DEFAULT_DARKNESS = 60
@@ -157,10 +157,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     settings = get_user_settings(user_id)
     
     text = (
-        "👋 <b>Добро пожаловать в Neopass Image Bot!</b>\n\n"
+        "👋 <b>Добро пожаловать в Dox Image Bot!</b>\n\n"
         "Отправь мне любую картинку, и я:\n"
         "• Затемню её (настраиваемый процент)\n"
-        "• Добавлю логотип Neopass (настраиваемая позиция)\n\n"
+        "• Добавлю логотип Dox (настраиваемая позиция)\n\n"
         f"<b>Текущие настройки:</b>\n"
         f"Затемнение: {settings['darkness']}%\n"
         f"Позиция: {settings['position']}\n\n"
@@ -250,7 +250,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Меню лого
     elif data == "menu_logo":
         await query.edit_message_text(
-            text="🖼️ <b>Логотип Neopass</b>\n\nТекущий логотип: круглый PNG с прозрачным фоном.\n\nДля изменения логотипа свяжитесь с разработчиком.",
+            text="🖼️ <b>Логотип Dox</b>\n\nТекущий логотип: круглый PNG с прозрачным фоном.\n\nДля изменения логотипа свяжитесь с разработчиком.",
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Назад", callback_data="back_to_main")]])
         )
@@ -387,7 +387,7 @@ def main():
         logger.error(f"Положи файл {LOGO_PATH} в ту же папку, где находится бот.")
         return
     
-    logger.info("🚀 Запуск Neopass Image Bot v2.1...")
+    logger.info("🚀 Запуск Dox Image Bot v2.1...")
     
     # Создаём приложение
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
