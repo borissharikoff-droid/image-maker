@@ -27,6 +27,7 @@ DEFAULT_LOGO_PATH = "dox_logo.png"
 # Настройки по умолчанию
 DEFAULT_DARKNESS = 60
 DEFAULT_POSITION = "bottom-left"
+DEFAULT_WATERMARK_SIZE = 0.2  # доля ширины картинки (20%)
 
 # Хранилище настроек пользователей
 user_settings = {}
@@ -38,11 +39,15 @@ def get_user_settings(user_id):
         user_settings[user_id] = {
             'darkness': DEFAULT_DARKNESS,
             'position': DEFAULT_POSITION,
+            'watermark_size': DEFAULT_WATERMARK_SIZE,
             'last_image': None,
             'logo': None,  # bytes пользовательского логотипа
             'waiting_for_logo': False
         }
-    return user_settings[user_id]
+    s = user_settings[user_id]
+    if 'watermark_size' not in s:
+        s['watermark_size'] = DEFAULT_WATERMARK_SIZE
+    return s
 
 
 def get_user_logo(user_id):
@@ -64,8 +69,10 @@ def get_logo_bytes(user_id):
             return f.read()
 
 
-def process_image_with_settings(image_bytes, darkness, position, logo_source):
+def process_image_with_settings(image_bytes, darkness, position, logo_source, logo_size_fraction=None):
     """Обработать изображение с заданными настройками"""
+    if logo_size_fraction is None:
+        logo_size_fraction = DEFAULT_WATERMARK_SIZE
     # Открываем изображение
     img = Image.open(BytesIO(image_bytes))
     
@@ -89,8 +96,8 @@ def process_image_with_settings(image_bytes, darkness, position, logo_source):
     if logo.mode != 'RGBA':
         logo = logo.convert('RGBA')
     
-    # Рассчитываем размер логотипа (20% ширины)
-    logo_width = int(img.width * 0.2)
+    # Рассчитываем размер логотипа (доля ширины картинки)
+    logo_width = int(img.width * logo_size_fraction)
     logo_height = int(logo.height * (logo_width / logo.width))
     logo = logo.resize((logo_width, logo_height), Image.Resampling.LANCZOS)
     
@@ -137,6 +144,23 @@ def get_position_label(position: str) -> str:
     """Красивое название позиции"""
     return POSITION_LABELS.get(position, position)
 
+
+# Размер ватермарки: доля ширины картинки → подпись
+WATERMARK_SIZE_FRACTIONS = {
+    "size_10": 0.10,
+    "size_15": 0.15,
+    "size_20": 0.20,
+    "size_25": 0.25,
+    "size_30": 0.30,
+}
+
+
+def get_watermark_size_label(fraction: float) -> str:
+    """Подпись размера ватермарки (процент от ширины)"""
+    pct = int(round(fraction * 100))
+    return f"{pct}%"
+
+
 def get_main_menu_keyboard():
     """Главное меню"""
     keyboard = [
@@ -148,10 +172,17 @@ def get_main_menu_keyboard():
 
 
 def get_logo_menu_keyboard():
-    """Меню ватермарки (логотип + позиция)"""
+    """Меню ватермарки (логотип + позиция + размер)"""
     keyboard = [
         [InlineKeyboardButton("📤 Загрузить свой логотип", callback_data="upload_logo")],
         [InlineKeyboardButton("🔄 Сбросить на дефолтный", callback_data="reset_logo")],
+        [
+            InlineKeyboardButton("10%", callback_data="wmsize_size_10"),
+            InlineKeyboardButton("15%", callback_data="wmsize_size_15"),
+            InlineKeyboardButton("20%", callback_data="wmsize_size_20"),
+            InlineKeyboardButton("25%", callback_data="wmsize_size_25"),
+            InlineKeyboardButton("30%", callback_data="wmsize_size_30"),
+        ],
         [
             InlineKeyboardButton("↖️", callback_data="position_top-left"),
             InlineKeyboardButton("⬆️", callback_data="position_top-center"),
@@ -214,6 +245,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"<b>Текущие настройки:</b>\n"
         f"Затемнение: {settings['darkness']}%\n"
         f"Позиция: {get_position_label(settings['position'])}\n"
+        f"Размер ватермарки: {get_watermark_size_label(settings['watermark_size'])}\n"
         f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n\n"
         "Используй кнопки ниже для настройки 👇"
     )
@@ -272,7 +304,8 @@ async def process_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             photo_bytes,
             settings['darkness'],
             settings['position'],
-            logo_source
+            logo_source,
+            logo_size_fraction=settings['watermark_size']
         )
         
         # Удаляем "Обрабатываю..."
@@ -283,6 +316,7 @@ async def process_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ <b>Готово!</b>\n"
             f"Затемнение: {settings['darkness']}%\n"
             f"Позиция: {get_position_label(settings['position'])}\n"
+            f"Размер ватермарки: {get_watermark_size_label(settings['watermark_size'])}\n"
             f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}"
         )
         
@@ -316,6 +350,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"<b>Текущие настройки:</b>\n"
                 f"Затемнение: {settings['darkness']}%\n"
                 f"Позиция: {get_position_label(settings['position'])}\n"
+                f"Размер ватермарки: {get_watermark_size_label(settings['watermark_size'])}\n"
                 f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n\n"
                 "Выбери опцию:"
             )
@@ -335,9 +370,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             caption = (
                 f"🖼️ <b>Меню ватермарки</b>\n\n"
-                f"{'Пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n\n"
-                f"Позиция: {get_position_label(settings['position'])}\n\n"
-                "Выбери логотип или его позицию:"
+                f"{'Пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n"
+                f"Позиция: {get_position_label(settings['position'])}\n"
+                f"Размер: {get_watermark_size_label(settings['watermark_size'])}\n\n"
+                "Выбери логотип, размер или позицию:"
             )
             
             await query.message.delete()
@@ -377,8 +413,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logo_bytes = get_logo_bytes(user_id)
             caption = (
                 f"🖼️ <b>Меню ватермарки</b>\n\n"
-                f"{'Пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n\n"
-                f"Позиция: {get_position_label(settings['position'])}"
+                f"{'Пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n"
+                f"Позиция: {get_position_label(settings['position'])}\n"
+                f"Размер: {get_watermark_size_label(settings['watermark_size'])}"
             )
             
             await query.message.delete()
@@ -399,8 +436,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             caption = (
                 "🖼️ <b>Меню ватермарки</b>\n\n"
-                "Dox (дефолтный) ✅\n\n"
-                f"Позиция: {get_position_label(settings['position'])}"
+                "Dox (дефолтный) ✅\n"
+                f"Позиция: {get_position_label(settings['position'])}\n"
+                f"Размер: {get_watermark_size_label(settings['watermark_size'])}"
             )
             
             await query.message.delete()
@@ -429,9 +467,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = (
                 "ℹ️ <b>Что делает бот:</b>\n\n"
                 "• Добавляет ватермарку (твой логотип или дефолтный)\n"
-                "• Ставит её в выбранную точку (6 позиций)\n"
-                "• Затемняет фото на выбранный процент (30-100)\n\n"
-                "Отправь фото, и бот вернёт готовый результат."
+                "• Размер ватермарки: 10%, 15%, 20%, 25% или 30% ширины фото\n"
+                "• Позиция: 6 вариантов (верх/низ, лево/центр/право)\n"
+                "• Затемнение: 30–100%\n\n"
+                "Отправь фото — бот вернёт результат."
             )
 
             await query.message.delete()
@@ -454,12 +493,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     settings['last_image'],
                     settings['darkness'],
                     settings['position'],
-                    logo_source
+                    logo_source,
+                    logo_size_fraction=settings['watermark_size']
                 )
                 
                 caption = (
                     f"✅ <b>Затемнение: {darkness}%</b>\n"
                     f"Позиция: {get_position_label(settings['position'])}\n"
+                    f"Размер ватермарки: {get_watermark_size_label(settings['watermark_size'])}\n"
                     f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}"
                 )
                 
@@ -485,6 +526,63 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=get_main_menu_keyboard()
                 )
         
+        # ===== ИЗМЕНЕНИЕ РАЗМЕРА ВАТЕРМАРКИ =====
+        elif data.startswith("wmsize_"):
+            key = data.replace("wmsize_", "", 1)
+            if key in WATERMARK_SIZE_FRACTIONS:
+                settings['watermark_size'] = WATERMARK_SIZE_FRACTIONS[key]
+                size_label = get_watermark_size_label(settings['watermark_size'])
+                if settings['last_image']:
+                    logo_source = get_user_logo(user_id)
+                    output = process_image_with_settings(
+                        settings['last_image'],
+                        settings['darkness'],
+                        settings['position'],
+                        logo_source,
+                        logo_size_fraction=settings['watermark_size']
+                    )
+                    caption = (
+                        f"✅ <b>Размер ватермарки: {size_label}</b>\n"
+                        f"Затемнение: {settings['darkness']}%\n"
+                        f"Позиция: {get_position_label(settings['position'])}\n"
+                        f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}"
+                    )
+                    await query.message.delete()
+                    await context.bot.send_photo(
+                        chat_id=query.message.chat_id,
+                        photo=output,
+                        caption=caption,
+                        parse_mode='HTML',
+                        reply_markup=get_settings_keyboard()
+                    )
+                elif query.message.photo:
+                    logo_bytes = get_logo_bytes(user_id)
+                    caption = (
+                        f"🖼️ <b>Меню ватермарки</b>\n\n"
+                        f"{'Пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n"
+                        f"Позиция: {get_position_label(settings['position'])}\n"
+                        f"Размер: {get_watermark_size_label(settings['watermark_size'])}"
+                    )
+                    await query.message.delete()
+                    await context.bot.send_photo(
+                        chat_id=query.message.chat_id,
+                        photo=BytesIO(logo_bytes),
+                        caption=caption,
+                        parse_mode='HTML',
+                        reply_markup=get_logo_menu_keyboard()
+                    )
+                else:
+                    text = (
+                        f"✅ Размер ватермарки: {size_label}\n\n"
+                        "Отправь фото для обработки!"
+                    )
+                    await query.message.delete()
+                    await context.bot.send_message(
+                        chat_id=query.message.chat_id,
+                        text=text,
+                        reply_markup=get_main_menu_keyboard()
+                    )
+        
         # ===== ИЗМЕНЕНИЕ ПОЗИЦИИ =====
         elif data.startswith("position_"):
             position = data.split("_", 1)[1]
@@ -497,12 +595,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     settings['last_image'],
                     settings['darkness'],
                     settings['position'],
-                    logo_source
+                    logo_source,
+                    logo_size_fraction=settings['watermark_size']
                 )
                 
                 caption = (
                     f"✅ <b>Позиция: {get_position_label(position)}</b>\n"
                     f"Затемнение: {settings['darkness']}%\n"
+                    f"Размер ватермарки: {get_watermark_size_label(settings['watermark_size'])}\n"
                     f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}"
                 )
                 
@@ -525,8 +625,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logo_bytes = get_logo_bytes(user_id)
                     caption = (
                         f"🖼️ <b>Меню ватермарки</b>\n\n"
-                        f"{'Пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n\n"
-                        f"Позиция: {get_position_label(settings['position'])}"
+                        f"{'Пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n"
+                        f"Позиция: {get_position_label(settings['position'])}\n"
+                        f"Размер: {get_watermark_size_label(settings['watermark_size'])}"
                     )
                     await query.message.delete()
                     await context.bot.send_photo(
