@@ -1,1 +1,1 @@
-worker: python neopass_bot.py
+worker: python dox_bot.py

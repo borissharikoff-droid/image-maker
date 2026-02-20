@@ -24,7 +24,7 @@ Telegram бот для обработки изображений с логоти
 
 ```bash
 pip install -r requirements.txt
-python neopass_bot.py
+python dox_bot.py
 ```
 
 ## Stack
