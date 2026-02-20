@@ -98,8 +98,10 @@ def process_image_with_settings(image_bytes, darkness, position, logo_source):
     padding = 20
     positions = {
         'top-left': (padding, padding),
+        'top-center': ((img.width - logo_width) // 2, padding),
         'top-right': (img.width - logo_width - padding, padding),
         'bottom-left': (padding, img.height - logo_height - padding),
+        'bottom-center': ((img.width - logo_width) // 2, img.height - logo_height - padding),
         'bottom-right': (img.width - logo_width - padding, img.height - logo_height - padding)
     }
     
@@ -121,21 +123,45 @@ def process_image_with_settings(image_bytes, darkness, position, logo_source):
 
 # ===== КЛАВИАТУРЫ =====
 
+POSITION_LABELS = {
+    "top-left": "сверху слева",
+    "top-center": "сверху по центру",
+    "top-right": "сверху справа",
+    "bottom-left": "снизу слева",
+    "bottom-center": "снизу по центру",
+    "bottom-right": "снизу справа",
+}
+
+
+def get_position_label(position: str) -> str:
+    """Красивое название позиции"""
+    return POSITION_LABELS.get(position, position)
+
 def get_main_menu_keyboard():
     """Главное меню"""
     keyboard = [
-        [InlineKeyboardButton("🖼️ Логотип для нанесения", callback_data="menu_logo")],
+        [InlineKeyboardButton("🖼️ Выбор ватермарки", callback_data="menu_logo")],
         [InlineKeyboardButton("⚫ Процент затемнения", callback_data="choose_darkness")],
-        [InlineKeyboardButton("📍 Расположение вотермарки", callback_data="choose_position")]
+        [InlineKeyboardButton("ℹ️ Кратко о боте", callback_data="about_bot")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 
 def get_logo_menu_keyboard():
-    """Меню логотипа"""
+    """Меню ватермарки (логотип + позиция)"""
     keyboard = [
         [InlineKeyboardButton("📤 Загрузить свой логотип", callback_data="upload_logo")],
         [InlineKeyboardButton("🔄 Сбросить на дефолтный", callback_data="reset_logo")],
+        [
+            InlineKeyboardButton("↖️", callback_data="position_top-left"),
+            InlineKeyboardButton("⬆️", callback_data="position_top-center"),
+            InlineKeyboardButton("↗️", callback_data="position_top-right")
+        ],
+        [
+            InlineKeyboardButton("↙️", callback_data="position_bottom-left"),
+            InlineKeyboardButton("⬇️", callback_data="position_bottom-center"),
+            InlineKeyboardButton("↘️", callback_data="position_bottom-right")
+        ],
         [InlineKeyboardButton("« Назад", callback_data="back_to_main")]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -154,21 +180,9 @@ def get_darkness_keyboard():
             InlineKeyboardButton("70%", callback_data="darkness_70"),
             InlineKeyboardButton("80%", callback_data="darkness_80")
         ],
-        [InlineKeyboardButton("« Назад", callback_data="back_to_main")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-
-def get_position_keyboard():
-    """Выбор позиции"""
-    keyboard = [
         [
-            InlineKeyboardButton("↖️ Сверху слева", callback_data="position_top-left"),
-            InlineKeyboardButton("↗️ Сверху справа", callback_data="position_top-right")
-        ],
-        [
-            InlineKeyboardButton("↙️ Снизу слева", callback_data="position_bottom-left"),
-            InlineKeyboardButton("↘️ Снизу справа", callback_data="position_bottom-right")
+            InlineKeyboardButton("90%", callback_data="darkness_90"),
+            InlineKeyboardButton("100%", callback_data="darkness_100")
         ],
         [InlineKeyboardButton("« Назад", callback_data="back_to_main")]
     ]
@@ -178,8 +192,9 @@ def get_position_keyboard():
 def get_settings_keyboard():
     """Кнопки под обработанным фото"""
     keyboard = [
+        [InlineKeyboardButton("🖼️ Выбор ватермарки", callback_data="menu_logo")],
         [InlineKeyboardButton("⚫ Процент затемнения", callback_data="choose_darkness")],
-        [InlineKeyboardButton("📍 Расположение вотермарки", callback_data="choose_position")]
+        [InlineKeyboardButton("ℹ️ Кратко о боте", callback_data="about_bot")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -198,7 +213,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Добавлю твой логотип (настраиваемая позиция)\n\n"
         f"<b>Текущие настройки:</b>\n"
         f"Затемнение: {settings['darkness']}%\n"
-        f"Позиция: {settings['position']}\n"
+        f"Позиция: {get_position_label(settings['position'])}\n"
         f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n\n"
         "Используй кнопки ниже для настройки 👇"
     )
@@ -267,7 +282,7 @@ async def process_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption = (
             f"✅ <b>Готово!</b>\n"
             f"Затемнение: {settings['darkness']}%\n"
-            f"Позиция: {settings['position']}\n"
+            f"Позиция: {get_position_label(settings['position'])}\n"
             f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}"
         )
         
@@ -300,7 +315,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = (
                 f"<b>Текущие настройки:</b>\n"
                 f"Затемнение: {settings['darkness']}%\n"
-                f"Позиция: {settings['position']}\n"
+                f"Позиция: {get_position_label(settings['position'])}\n"
                 f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n\n"
                 "Выбери опцию:"
             )
@@ -319,9 +334,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logo_bytes = get_logo_bytes(user_id)
             
             caption = (
-                f"🖼️ <b>Текущий логотип</b>\n\n"
+                f"🖼️ <b>Меню ватермарки</b>\n\n"
                 f"{'Пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n\n"
-                "Выбери действие:"
+                f"Позиция: {get_position_label(settings['position'])}\n\n"
+                "Выбери логотип или его позицию:"
             )
             
             await query.message.delete()
@@ -360,8 +376,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             logo_bytes = get_logo_bytes(user_id)
             caption = (
-                f"🖼️ <b>Текущий логотип</b>\n\n"
-                f"{'Пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}"
+                f"🖼️ <b>Меню ватермарки</b>\n\n"
+                f"{'Пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n\n"
+                f"Позиция: {get_position_label(settings['position'])}"
             )
             
             await query.message.delete()
@@ -380,7 +397,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             with open(DEFAULT_LOGO_PATH, 'rb') as f:
                 logo_bytes = f.read()
             
-            caption = "🖼️ <b>Текущий логотип</b>\n\nDox (дефолтный) ✅"
+            caption = (
+                "🖼️ <b>Меню ватермарки</b>\n\n"
+                "Dox (дефолтный) ✅\n\n"
+                f"Позиция: {get_position_label(settings['position'])}"
+            )
             
             await query.message.delete()
             await context.bot.send_photo(
@@ -403,16 +424,22 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=get_darkness_keyboard()
             )
         
-        # ===== ВЫБОР ПОЗИЦИИ =====
-        elif data == "choose_position":
-            text = f"📍 <b>Выбери расположение логотипа:</b>\n\nТекущее: {settings['position']}"
-            
+        # ===== КРАТКОЕ ОПИСАНИЕ =====
+        elif data == "about_bot":
+            text = (
+                "ℹ️ <b>Что делает бот:</b>\n\n"
+                "• Добавляет ватермарку (твой логотип или дефолтный)\n"
+                "• Ставит её в выбранную точку (6 позиций)\n"
+                "• Затемняет фото на выбранный процент (30-100)\n\n"
+                "Отправь фото, и бот вернёт готовый результат."
+            )
+
             await query.message.delete()
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text=text,
                 parse_mode='HTML',
-                reply_markup=get_position_keyboard()
+                reply_markup=get_main_menu_keyboard()
             )
         
         # ===== ИЗМЕНЕНИЕ ЗАТЕМНЕНИЯ =====
@@ -432,7 +459,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 caption = (
                     f"✅ <b>Затемнение: {darkness}%</b>\n"
-                    f"Позиция: {settings['position']}\n"
+                    f"Позиция: {get_position_label(settings['position'])}\n"
                     f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}"
                 )
                 
@@ -474,7 +501,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 
                 caption = (
-                    f"✅ <b>Позиция: {position}</b>\n"
+                    f"✅ <b>Позиция: {get_position_label(position)}</b>\n"
                     f"Затемнение: {settings['darkness']}%\n"
                     f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}"
                 )
@@ -490,16 +517,32 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 # Просто обновляем настройки
                 text = (
-                    f"✅ Позиция изменена на {position}\n\n"
+                    f"✅ Позиция изменена на {get_position_label(position)}\n\n"
                     "Отправь фото для обработки!"
                 )
-                
-                await query.message.delete()
-                await context.bot.send_message(
-                    chat_id=query.message.chat_id,
-                    text=text,
-                    reply_markup=get_main_menu_keyboard()
-                )
+
+                if query.message.photo:
+                    logo_bytes = get_logo_bytes(user_id)
+                    caption = (
+                        f"🖼️ <b>Меню ватермарки</b>\n\n"
+                        f"{'Пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n\n"
+                        f"Позиция: {get_position_label(settings['position'])}"
+                    )
+                    await query.message.delete()
+                    await context.bot.send_photo(
+                        chat_id=query.message.chat_id,
+                        photo=BytesIO(logo_bytes),
+                        caption=caption,
+                        parse_mode='HTML',
+                        reply_markup=get_logo_menu_keyboard()
+                    )
+                else:
+                    await query.message.delete()
+                    await context.bot.send_message(
+                        chat_id=query.message.chat_id,
+                        text=text,
+                        reply_markup=get_main_menu_keyboard()
+                    )
     
     except Exception as e:
         logger.error(f"Ошибка callback: {e}", exc_info=True)
