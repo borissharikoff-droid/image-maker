@@ -243,7 +243,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Затемню её (настраиваемый процент)\n"
         "• Добавлю твой логотип (настраиваемая позиция)\n\n"
         f"<b>Текущие настройки:</b>\n"
-        f"Затемнение: {'Без затемнения' if settings['darkness'] == 0 else f\"{settings['darkness']}%\"}\n"
+        f"Затемнение: {'Без затемнения' if settings['darkness'] == 0 else str(settings['darkness']) + '%'}\n"
         f"Позиция: {get_position_label(settings['position'])}\n"
         f"Размер ватермарки: {get_watermark_size_label(settings['watermark_size'])}\n"
         f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n\n"
@@ -314,7 +314,7 @@ async def process_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Отправляем результат
         caption = (
             f"✅ <b>Готово!</b>\n"
-            f"Затемнение: {'Без затемнения' if settings['darkness'] == 0 else f\"{settings['darkness']}%\"}\n"
+            f"Затемнение: {'Без затемнения' if settings['darkness'] == 0 else str(settings['darkness']) + '%'}\n"
             f"Позиция: {get_position_label(settings['position'])}\n"
             f"Размер ватермарки: {get_watermark_size_label(settings['watermark_size'])}\n"
             f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}"
@@ -348,7 +348,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data == "back_to_main":
             text = (
                 f"<b>Текущие настройки:</b>\n"
-                f"Затемнение: {'Без затемнения' if settings['darkness'] == 0 else f\"{settings['darkness']}%\"}\n"
+                f"Затемнение: {'Без затемнения' if settings['darkness'] == 0 else str(settings['darkness']) + '%'}\n"
                 f"Позиция: {get_position_label(settings['position'])}\n"
                 f"Размер ватермарки: {get_watermark_size_label(settings['watermark_size'])}\n"
                 f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n\n"
@@ -452,7 +452,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # ===== ВЫБОР ЗАТЕМНЕНИЯ =====
         elif data == "choose_darkness":
-            text = f"⚫ <b>Выбери процент затемнения:</b>\n\nТекущий: {'Без затемнения' if settings['darkness'] == 0 else f\"{settings['darkness']}%\"}"
+            text = f"⚫ <b>Выбери процент затемнения:</b>\n\nТекущий: {'Без затемнения' if settings['darkness'] == 0 else str(settings['darkness']) + '%'}"
             
             await query.message.delete()
             await context.bot.send_message(
@@ -498,7 +498,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 
                 caption = (
-                    f"✅ <b>Затемнение: {'Без затемнения' if darkness == 0 else f'{darkness}%'}</b>\n"
+                    f"✅ <b>Затемнение: {'Без затемнения' if darkness == 0 else str(darkness) + '%'}</b>\n"
                     f"Позиция: {get_position_label(settings['position'])}\n"
                     f"Размер ватермарки: {get_watermark_size_label(settings['watermark_size'])}\n"
                     f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}"
@@ -515,7 +515,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 # Просто обновляем настройки
                 text = (
-                    f"✅ Затемнение: {'Без затемнения' if darkness == 0 else f'{darkness}%'}\n\n"
+                    f"✅ Затемнение: {'Без затемнения' if darkness == 0 else str(darkness) + '%'}\n\n"
                     "Отправь фото для обработки!"
                 )
                 
@@ -543,7 +543,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     caption = (
                         f"✅ <b>Размер ватермарки: {size_label}</b>\n"
-                        f"Затемнение: {'Без затемнения' if settings['darkness'] == 0 else f\"{settings['darkness']}%\"}\n"
+                        f"Затемнение: {'Без затемнения' if settings['darkness'] == 0 else str(settings['darkness']) + '%'}\n"
                         f"Позиция: {get_position_label(settings['position'])}\n"
                         f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}"
                     )
@@ -601,7 +601,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 caption = (
                     f"✅ <b>Позиция: {get_position_label(position)}</b>\n"
-                    f"Затемнение: {'Без затемнения' if settings['darkness'] == 0 else f\"{settings['darkness']}%\"}\n"
+                    f"Затемнение: {'Без затемнения' if settings['darkness'] == 0 else str(settings['darkness']) + '%'}\n"
                     f"Размер ватермарки: {get_watermark_size_label(settings['watermark_size'])}\n"
                     f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}"
                 )
