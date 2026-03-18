@@ -6,6 +6,8 @@ Dox Image Bot v3.0
 """
 
 import os
+import json
+import base64
 import asyncio
 import logging
 from io import BytesIO
@@ -25,11 +27,90 @@ DEFAULT_DARKNESS = 60
 DEFAULT_POSITION = "bottom-left"
 DEFAULT_WATERMARK_SIZE = 0.2
 
+# Папка для хранения данных.
+# На Railway: создай Volume и смонтируй его в /data, затем добавь
+# переменную окружения DATA_DIR=/data в настройках сервиса.
+DATA_DIR = os.environ.get("DATA_DIR", ".")
+STORAGE_FILE = os.path.join(DATA_DIR, "user_data.json")
+
 user_settings = {}
 
 # Буфер для медиагрупп (несколько фото сразу)
-# ключ: media_group_id → {'user_id', 'chat_id', 'file_ids': [], 'task'}
 media_group_buffer: dict = {}
+
+
+# ===== ХРАНИЛИЩЕ =====
+
+def _b64(data: bytes | None) -> str | None:
+    return base64.b64encode(data).decode() if data else None
+
+def _unb64(data: str | None) -> bytes | None:
+    return base64.b64decode(data) if data else None
+
+def save_data():
+    """Сохранить все настройки пользователей на диск."""
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        out = {}
+        for uid, s in user_settings.items():
+            out[str(uid)] = {
+                'darkness':          s.get('darkness', DEFAULT_DARKNESS),
+                'position':          s.get('position', DEFAULT_POSITION),
+                'watermark_size':    s.get('watermark_size', DEFAULT_WATERMARK_SIZE),
+                'logo':              _b64(s.get('logo')),
+                'active_profile_id': s.get('active_profile_id'),
+                'next_profile_id':   s.get('next_profile_id', 1),
+                'profiles': {
+                    pid: {
+                        'name':     p['name'],
+                        'logo':     _b64(p.get('logo')),
+                        'position': p['position'],
+                        'size':     p['size'],
+                    }
+                    for pid, p in s.get('profiles', {}).items()
+                },
+            }
+        with open(STORAGE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(out, f, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Ошибка сохранения данных: {e}")
+
+
+def load_data():
+    """Загрузить настройки пользователей с диска при старте."""
+    if not os.path.exists(STORAGE_FILE):
+        return
+    try:
+        with open(STORAGE_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        for uid_str, s in data.items():
+            uid = int(uid_str)
+            user_settings[uid] = {
+                'darkness':                s.get('darkness', DEFAULT_DARKNESS),
+                'position':                s.get('position', DEFAULT_POSITION),
+                'watermark_size':          s.get('watermark_size', DEFAULT_WATERMARK_SIZE),
+                'last_image':              None,
+                'logo':                    _unb64(s.get('logo')),
+                'active_profile_id':       s.get('active_profile_id'),
+                'next_profile_id':         s.get('next_profile_id', 1),
+                'profiles': {
+                    pid: {
+                        'name':     p['name'],
+                        'logo':     _unb64(p.get('logo')),
+                        'position': p['position'],
+                        'size':     p['size'],
+                    }
+                    for pid, p in s.get('profiles', {}).items()
+                },
+                'waiting_for_size':          False,
+                'waiting_for_profile_logo':  False,
+                'waiting_for_profile_name':  False,
+                'pending_profile_logo':      None,
+                'editing_profile_id':        None,
+            }
+        logger.info(f"✅ Загружены данные для {len(user_settings)} пользователей")
+    except Exception as e:
+        logger.error(f"Ошибка загрузки данных: {e}")
 
 
 # ===== НАСТРОЙКИ =====
@@ -396,6 +477,7 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             s['pending_profile_logo'] = None
             s['editing_profile_id'] = None
             activate_profile(user_id, editing_id)
+            save_data()
             await send_profile_settings_screen(update.message.chat_id, context, user_id, editing_id)
         else:
             # Новый профиль
@@ -407,6 +489,7 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
             s['pending_profile_logo'] = None
             activate_profile(user_id, pid)
+            save_data()
             await send_profile_settings_screen(update.message.chat_id, context, user_id, pid)
         return
 
@@ -427,6 +510,7 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         s['watermark_size'] = round(value / 100, 2)
         sync_active_profile(user_id)
+        save_data()
         current_pct = value
         pid = s['active_profile_id']
 
@@ -879,6 +963,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=get_main_menu_keyboard()
                 )
 
+        save_data()
+
     except Exception as e:
         logger.error(f"Ошибка callback: {e}", exc_info=True)
         try:
@@ -901,6 +987,7 @@ def main():
         logger.error(f"ОШИБКА: {DEFAULT_LOGO_PATH} не найден!")
         return
 
+    load_data()
     logger.info("🚀 Запуск Dox Image Bot v3.0...")
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
