@@ -94,12 +94,16 @@ def process_image_with_settings(image_bytes, darkness, position, logo_source, lo
     # Конвертируем логотип в RGBA
     if logo.mode != 'RGBA':
         logo = logo.convert('RGBA')
-    
-    # Рассчитываем размер логотипа (доля ширины картинки)
-    logo_width = int(img.width * logo_size_fraction)
-    logo_height = int(logo.height * (logo_width / logo.width))
-    logo = logo.resize((logo_width, logo_height), Image.Resampling.LANCZOS)
-    
+
+    # Если логотип пользовательский (BytesIO) — не масштабируем, берём оригинальный размер
+    if isinstance(logo_source, BytesIO):
+        logo_width, logo_height = logo.size
+    else:
+        # Рассчитываем размер логотипа (доля ширины картинки)
+        logo_width = int(img.width * logo_size_fraction)
+        logo_height = int(logo.height * (logo_width / logo.width))
+        logo = logo.resize((logo_width, logo_height), Image.Resampling.LANCZOS)
+
     # Определяем позицию
     padding = 20
     positions = {
