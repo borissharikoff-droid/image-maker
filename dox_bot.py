@@ -42,11 +42,14 @@ def get_user_settings(user_id):
             'watermark_size': DEFAULT_WATERMARK_SIZE,
             'last_image': None,
             'logo': None,  # bytes пользовательского логотипа
-            'waiting_for_logo': False
+            'waiting_for_logo': False,
+            'waiting_for_size': False
         }
     s = user_settings[user_id]
     if 'watermark_size' not in s:
         s['watermark_size'] = DEFAULT_WATERMARK_SIZE
+    if 'waiting_for_size' not in s:
+        s['waiting_for_size'] = False
     return s
 
 
@@ -86,7 +89,7 @@ def process_image_with_settings(image_bytes, darkness, position, logo_source, lo
         img = Image.alpha_composite(img, overlay)
     
     # Накладываем логотип (если размер > 0)
-    if logo_size_fraction > 0 or isinstance(logo_source, BytesIO):
+    if logo_size_fraction > 0:
         if isinstance(logo_source, str):
             logo = Image.open(logo_source)
         else:
@@ -95,13 +98,10 @@ def process_image_with_settings(image_bytes, darkness, position, logo_source, lo
         if logo.mode != 'RGBA':
             logo = logo.convert('RGBA')
 
-        # Если логотип пользовательский (BytesIO) — не масштабируем, берём оригинальный размер
-        if isinstance(logo_source, BytesIO):
-            logo_width, logo_height = logo.size
-        else:
-            logo_width = int(img.width * logo_size_fraction)
-            logo_height = int(logo.height * (logo_width / logo.width))
-            logo = logo.resize((logo_width, logo_height), Image.Resampling.LANCZOS)
+        # Масштабируем логотип — logo_size_fraction задаёт долю ширины фото
+        logo_width = int(img.width * logo_size_fraction)
+        logo_height = int(logo.height * (logo_width / logo.width))
+        logo = logo.resize((logo_width, logo_height), Image.Resampling.LANCZOS)
 
         padding = 20
         positions = {
@@ -153,7 +153,7 @@ def get_watermark_size_label(fraction: float) -> str:
 def get_main_menu_keyboard():
     """Главное меню"""
     keyboard = [
-        [InlineKeyboardButton("🖼️ Выбор ватермарки", callback_data="menu_logo")],
+        [InlineKeyboardButton("⚙️ Настройки ватермарки", callback_data="menu_logo")],
         [InlineKeyboardButton("⚫ Процент затемнения", callback_data="choose_darkness")],
         [InlineKeyboardButton("ℹ️ Кратко о боте", callback_data="about_bot")]
     ]
@@ -166,12 +166,13 @@ def get_logo_menu_keyboard(current_size_pct=20):
         [InlineKeyboardButton("📤 Загрузить свой логотип", callback_data="upload_logo")],
         [InlineKeyboardButton("🔄 Сбросить на дефолтный", callback_data="reset_logo")],
         [
-            InlineKeyboardButton("−10", callback_data="wmsize_minus10"),
-            InlineKeyboardButton("−5", callback_data="wmsize_minus5"),
-            InlineKeyboardButton(f"📐 {current_size_pct}%", callback_data="wmsize_noop"),
-            InlineKeyboardButton("+5", callback_data="wmsize_plus5"),
-            InlineKeyboardButton("+10", callback_data="wmsize_plus10"),
+            InlineKeyboardButton("−10%", callback_data="wmsize_minus10"),
+            InlineKeyboardButton("−5%", callback_data="wmsize_minus5"),
+            InlineKeyboardButton(f"◾ {current_size_pct}%", callback_data="wmsize_noop"),
+            InlineKeyboardButton("+5%", callback_data="wmsize_plus5"),
+            InlineKeyboardButton("+10%", callback_data="wmsize_plus10"),
         ],
+        [InlineKeyboardButton("✏️ Ввести размер вручную", callback_data="wmsize_input")],
         [
             InlineKeyboardButton("↖️", callback_data="position_top-left"),
             InlineKeyboardButton("⬆️", callback_data="position_top-center"),
@@ -213,7 +214,7 @@ def get_darkness_keyboard():
 def get_settings_keyboard():
     """Кнопки под обработанным фото"""
     keyboard = [
-        [InlineKeyboardButton("🖼️ Выбор ватермарки", callback_data="menu_logo")],
+        [InlineKeyboardButton("⚙️ Настройки ватермарки", callback_data="menu_logo")],
         [InlineKeyboardButton("⚫ Процент затемнения", callback_data="choose_darkness")],
         [InlineKeyboardButton("ℹ️ Кратко о боте", callback_data="about_bot")]
     ]
@@ -245,6 +246,70 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='HTML',
         reply_markup=get_main_menu_keyboard()
     )
+
+
+async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка текстовых сообщений — ввод размера ватермарки вручную"""
+    user_id = update.effective_user.id
+    settings = get_user_settings(user_id)
+
+    if not settings.get('waiting_for_size', False):
+        return
+
+    settings['waiting_for_size'] = False
+    text = update.message.text.strip().rstrip('%')
+
+    try:
+        value = int(text)
+        if not 0 <= value <= 100:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Введи число от 0 до 100 (например: <b>25</b>)",
+            parse_mode='HTML'
+        )
+        settings['waiting_for_size'] = True
+        return
+
+    settings['watermark_size'] = round(value / 100, 2)
+    current_pct = value
+    size_label = f"{value}%"
+
+    if settings['last_image']:
+        logo_source = get_user_logo(user_id)
+        output = process_image_with_settings(
+            settings['last_image'],
+            settings['darkness'],
+            settings['position'],
+            logo_source,
+            logo_size_fraction=settings['watermark_size']
+        )
+        caption = (
+            f"✅ <b>Размер ватермарки: {size_label}</b>\n"
+            f"Затемнение: {'Без затемнения' if settings['darkness'] == 0 else str(settings['darkness']) + '%'}\n"
+            f"Позиция: {get_position_label(settings['position'])}\n"
+            f"Логотип: {'пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}"
+        )
+        await update.message.reply_photo(
+            photo=output,
+            caption=caption,
+            parse_mode='HTML',
+            reply_markup=get_settings_keyboard()
+        )
+    else:
+        logo_bytes = get_logo_bytes(user_id)
+        caption = (
+            f"🖼️ <b>Настройки ватермарки</b>\n\n"
+            f"{'Пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n"
+            f"Позиция: {get_position_label(settings['position'])}\n"
+            f"Размер: {size_label}"
+        )
+        await update.message.reply_photo(
+            photo=BytesIO(logo_bytes),
+            caption=caption,
+            parse_mode='HTML',
+            reply_markup=get_logo_menu_keyboard(current_pct)
+        )
 
 
 async def process_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -446,6 +511,25 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=get_logo_menu_keyboard(int(round(settings["watermark_size"] * 100)))
             )
         
+        # ===== ОТМЕНА ВВОДА РАЗМЕРА =====
+        elif data == "cancel_size_input":
+            settings['waiting_for_size'] = False
+            logo_bytes = get_logo_bytes(user_id)
+            caption = (
+                f"🖼️ <b>Настройки ватермарки</b>\n\n"
+                f"{'Пользовательский ✅' if settings['logo'] else 'Dox (дефолтный)'}\n"
+                f"Позиция: {get_position_label(settings['position'])}\n"
+                f"Размер: {get_watermark_size_label(settings['watermark_size'])}"
+            )
+            await query.message.delete()
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=BytesIO(logo_bytes),
+                caption=caption,
+                parse_mode='HTML',
+                reply_markup=get_logo_menu_keyboard(int(round(settings["watermark_size"] * 100)))
+            )
+
         # ===== СБРОС ЛОГОТИПА =====
         elif data == "reset_logo":
             settings['logo'] = None
@@ -553,7 +637,22 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "wmsize_plus5": 0.05,
                 "wmsize_plus10": 0.10,
             }
-            if data in step_map:
+            if data == "wmsize_input":
+                settings['waiting_for_size'] = True
+                await query.message.delete()
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=(
+                        "✏️ <b>Введи размер ватермарки</b>\n\n"
+                        "Напиши число от <b>0</b> до <b>100</b>\n"
+                        "Это процент от ширины фотографии.\n\n"
+                        "Например: <code>15</code> — ватермарка займёт 15% ширины фото"
+                    ),
+                    parse_mode='HTML',
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Отмена", callback_data="cancel_size_input")]])
+                )
+                return
+            elif data in step_map:
                 new_size = round(settings['watermark_size'] + step_map[data], 2)
                 settings['watermark_size'] = max(0.0, min(1.0, new_size))
 
@@ -708,6 +807,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, process_photo))
     app.add_handler(MessageHandler(filters.Document.IMAGE, process_document))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_text))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_error_handler(error_handler)
     
