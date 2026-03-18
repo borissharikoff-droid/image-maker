@@ -261,11 +261,40 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def process_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка документов (PNG/файл без сжатия) — только для загрузки логотипа"""
+    user_id = update.effective_user.id
+    settings = get_user_settings(user_id)
+
+    if not settings.get('waiting_for_logo', False):
+        return
+
+    try:
+        doc = update.message.document
+        file = await context.bot.get_file(doc.file_id)
+        logo_bytes = await file.download_as_bytearray()
+
+        settings['logo'] = bytes(logo_bytes)
+        settings['waiting_for_logo'] = False
+
+        await update.message.reply_photo(
+            photo=BytesIO(settings['logo']),
+            caption="✅ <b>Логотип загружен!</b>\n\nТеперь отправь фото для обработки.",
+            parse_mode='HTML',
+            reply_markup=get_main_menu_keyboard()
+        )
+
+        logger.info(f"Пользователь {user_id} загрузил логотип (документ)")
+    except Exception as e:
+        logger.error(f"Ошибка загрузки логотипа (документ): {e}")
+        await update.message.reply_text("❌ Ошибка при загрузке логотипа. Попробуй ещё раз.")
+
+
 async def process_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка фотографий"""
     user_id = update.effective_user.id
     settings = get_user_settings(user_id)
-    
+
     try:
         # Проверяем: это загрузка логотипа или обработка фото?
         if settings.get('waiting_for_logo', False):
@@ -683,6 +712,7 @@ def main():
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, process_photo))
+    app.add_handler(MessageHandler(filters.Document.IMAGE, process_document))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_error_handler(error_handler)
     
