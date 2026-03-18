@@ -6,10 +6,11 @@ Dox Image Bot v3.0
 """
 
 import os
+import asyncio
 import logging
 from io import BytesIO
 from PIL import Image
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 logging.basicConfig(
@@ -25,6 +26,10 @@ DEFAULT_POSITION = "bottom-left"
 DEFAULT_WATERMARK_SIZE = 0.2
 
 user_settings = {}
+
+# Буфер для медиагрупп (несколько фото сразу)
+# ключ: media_group_id → {'user_id', 'chat_id', 'file_ids': [], 'task'}
+media_group_buffer: dict = {}
 
 
 # ===== НАСТРОЙКИ =====
@@ -469,8 +474,62 @@ async def process_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
+async def _process_media_group(group_id: str, chat_id: int, user_id: int, context):
+    """Обработать все фото медиагруппы после небольшой задержки"""
+    await asyncio.sleep(1.5)  # ждём, пока придут все фото группы
+
+    entry = media_group_buffer.pop(group_id, None)
+    if not entry:
+        return
+
+    file_ids = entry['file_ids']
+    s = get_user_settings(user_id)
+
+    try:
+        msg = await context.bot.send_message(chat_id=chat_id, text=f"⏳ Обрабатываю {len(file_ids)} фото...")
+
+        results = []
+        for file_id in file_ids:
+            file = await context.bot.get_file(file_id)
+            photo_bytes = bytes(await file.download_as_bytearray())
+            output = process_image_with_settings(
+                photo_bytes, s['darkness'], s['position'],
+                get_user_logo(user_id), logo_size_fraction=s['watermark_size']
+            )
+            results.append(output)
+
+        # Сохраняем последнее фото как last_image для повторного использования
+        if results:
+            last_file = await context.bot.get_file(file_ids[-1])
+            s['last_image'] = bytes(await last_file.download_as_bytearray())
+
+        await msg.delete()
+
+        # Отправляем как альбом (первое фото с подписью)
+        media = []
+        for i, output in enumerate(results):
+            caption = make_status_caption(user_id) if i == 0 else None
+            parse_mode = 'HTML' if i == 0 else None
+            media.append(InputMediaPhoto(media=output, caption=caption, parse_mode=parse_mode))
+
+        sent = await context.bot.send_media_group(chat_id=chat_id, media=media)
+
+        # Отправляем кнопки настроек отдельным сообщением
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"✅ Обработано фото: {len(results)}",
+            reply_markup=get_settings_keyboard()
+        )
+
+        logger.info(f"Обработана медиагруппа {group_id} ({len(results)} фото) от {user_id}")
+
+    except Exception as e:
+        logger.error(f"Ошибка обработки медиагруппы: {e}", exc_info=True)
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ Ошибка: {e}")
+
+
 async def process_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Фотографии"""
+    """Фотографии — одиночные и альбомы"""
     user_id = update.effective_user.id
     s = get_user_settings(user_id)
 
@@ -484,9 +543,32 @@ async def process_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _save_logo_for_profile(user_id, logo_bytes, update.message.chat_id, context)
             return
 
-        # ── Обработка фото ──
-        msg = await update.message.reply_text("⏳ Обрабатываю...")
         photo = update.message.photo[-1]
+        group_id = update.message.media_group_id
+
+        # ── Медиагруппа (несколько фото) ──
+        if group_id:
+            if group_id not in media_group_buffer:
+                media_group_buffer[group_id] = {
+                    'user_id': user_id,
+                    'chat_id': update.message.chat_id,
+                    'file_ids': [],
+                    'task': None,
+                }
+            media_group_buffer[group_id]['file_ids'].append(photo.file_id)
+
+            # Перезапускаем таймер — ждём прихода всех фото группы
+            existing_task = media_group_buffer[group_id].get('task')
+            if existing_task and not existing_task.done():
+                existing_task.cancel()
+            task = asyncio.create_task(
+                _process_media_group(group_id, update.message.chat_id, user_id, context)
+            )
+            media_group_buffer[group_id]['task'] = task
+            return
+
+        # ── Одиночное фото ──
+        msg = await update.message.reply_text("⏳ Обрабатываю...")
         file = await context.bot.get_file(photo.file_id)
         photo_bytes = bytes(await file.download_as_bytearray())
         s['last_image'] = photo_bytes
