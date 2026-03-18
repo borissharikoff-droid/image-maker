@@ -317,26 +317,40 @@ async def send_profiles_screen(chat_id, context, user_id, delete_msg=None):
 
 
 async def send_profile_settings_screen(chat_id, context, user_id, profile_id, delete_msg=None):
+    """Показать экран профиля — с обработанным фото (если есть) или превью лого"""
     s = get_user_settings(user_id)
     p = s['profiles'].get(profile_id)
     if not p:
         return
     current_pct = int(round(s['watermark_size'] * 100))
-    caption = (
-        f"📁 <b>{p['name']}</b>\n\n"
-        f"Размер: {get_watermark_size_label(s['watermark_size'])}\n"
-        f"Позиция: {get_position_label(s['position'])}"
-    )
-    logo_bytes = s['logo'] if s['logo'] else open(DEFAULT_LOGO_PATH, 'rb').read()
+    kb = get_profile_settings_keyboard(profile_id, current_pct)
+
     if delete_msg:
         await delete_msg.delete()
-    await context.bot.send_photo(
-        chat_id=chat_id,
-        photo=BytesIO(logo_bytes),
-        caption=caption,
-        parse_mode='HTML',
-        reply_markup=get_profile_settings_keyboard(profile_id, current_pct)
-    )
+
+    if s['last_image']:
+        # Показываем обработанное фото с кнопками профиля
+        output = process_image_with_settings(
+            s['last_image'], s['darkness'], s['position'],
+            get_user_logo(user_id), logo_size_fraction=s['watermark_size']
+        )
+        caption = make_status_caption(user_id, f"📁 <b>{p['name']}</b>")
+        await context.bot.send_photo(
+            chat_id=chat_id, photo=output,
+            caption=caption, parse_mode='HTML', reply_markup=kb
+        )
+    else:
+        # Нет фото — показываем лого как превью
+        logo_bytes = s['logo'] if s['logo'] else open(DEFAULT_LOGO_PATH, 'rb').read()
+        caption = (
+            f"📁 <b>{p['name']}</b>\n\n"
+            f"Размер: {get_watermark_size_label(s['watermark_size'])}\n"
+            f"Позиция: {get_position_label(s['position'])}"
+        )
+        await context.bot.send_photo(
+            chat_id=chat_id, photo=BytesIO(logo_bytes),
+            caption=caption, parse_mode='HTML', reply_markup=kb
+        )
 
 
 # ===== ОБРАБОТЧИКИ =====
@@ -624,21 +638,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ── Использовать дефолтный лого ──
         elif data == "profile_use_default":
             use_default_logo(user_id)
-            if s['last_image']:
-                output = process_image_with_settings(
-                    s['last_image'], s['darkness'], s['position'],
-                    get_user_logo(user_id), logo_size_fraction=s['watermark_size']
-                )
-                await query.message.delete()
-                await context.bot.send_photo(
-                    chat_id=query.message.chat_id,
-                    photo=output,
-                    caption=make_status_caption(user_id, "✅ <b>Активирован Dox (дефолтный)</b>"),
-                    parse_mode='HTML',
-                    reply_markup=get_settings_keyboard()
-                )
-            else:
-                await send_profiles_screen(query.message.chat_id, context, user_id, query.message)
+            await send_profiles_screen(query.message.chat_id, context, user_id, query.message)
 
         # ── Выбрать профиль ──
         elif data.startswith("profile_select_"):
@@ -646,23 +646,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if pid not in s['profiles']:
                 return
             activate_profile(user_id, pid)
-            if s['last_image']:
-                output = process_image_with_settings(
-                    s['last_image'], s['darkness'], s['position'],
-                    get_user_logo(user_id), logo_size_fraction=s['watermark_size']
-                )
-                await query.message.delete()
-                await context.bot.send_photo(
-                    chat_id=query.message.chat_id,
-                    photo=output,
-                    caption=make_status_caption(user_id, f"✅ <b>Профиль: {s['profiles'][pid]['name']}</b>"),
-                    parse_mode='HTML',
-                    reply_markup=get_settings_keyboard()
-                )
-            else:
-                await send_profile_settings_screen(
-                    query.message.chat_id, context, user_id, pid, query.message
-                )
+            await send_profile_settings_screen(
+                query.message.chat_id, context, user_id, pid, query.message
+            )
 
         # ── Создать профиль ──
         elif data == "profile_new":
@@ -829,7 +815,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             current_pct = int(round(s['watermark_size'] * 100))
             pid = s['active_profile_id']
 
-            if s['last_image']:
+            if pid and pid in s['profiles']:
+                await send_profile_settings_screen(
+                    query.message.chat_id, context, user_id, pid, query.message
+                )
+            elif s['last_image']:
                 output = process_image_with_settings(
                     s['last_image'], s['darkness'], s['position'],
                     get_user_logo(user_id), logo_size_fraction=s['watermark_size']
@@ -839,10 +829,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=query.message.chat_id, photo=output,
                     caption=make_status_caption(user_id, f"✅ <b>Размер: {current_pct}%</b>"),
                     parse_mode='HTML', reply_markup=get_settings_keyboard()
-                )
-            elif pid and pid in s['profiles']:
-                await send_profile_settings_screen(
-                    query.message.chat_id, context, user_id, pid, query.message
                 )
             else:
                 await query.message.delete()
@@ -870,7 +856,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sync_active_profile(user_id)
             pid = s['active_profile_id']
 
-            if s['last_image']:
+            if pid and pid in s['profiles']:
+                await send_profile_settings_screen(
+                    query.message.chat_id, context, user_id, pid, query.message
+                )
+            elif s['last_image']:
                 output = process_image_with_settings(
                     s['last_image'], s['darkness'], s['position'],
                     get_user_logo(user_id), logo_size_fraction=s['watermark_size']
@@ -880,10 +870,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=query.message.chat_id, photo=output,
                     caption=make_status_caption(user_id, f"✅ <b>Позиция: {get_position_label(position)}</b>"),
                     parse_mode='HTML', reply_markup=get_settings_keyboard()
-                )
-            elif pid and pid in s['profiles']:
-                await send_profile_settings_screen(
-                    query.message.chat_id, context, user_id, pid, query.message
                 )
             else:
                 await query.message.delete()
